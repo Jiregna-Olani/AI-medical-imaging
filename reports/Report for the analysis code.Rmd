@@ -1,0 +1,418 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+---
+title: "Global Perspective on the Use of Artificial Intelligence in Medical Imaging for Cancer Studies: A Systematic Review and Meta-Analysis"
+
+author: Jiregna Olani Kedida, Honoria Ocagli, Tawadod Abdelgader Abdalla Mohamed,
+  Corrado Lanera, Dario Gregori
+date: "2025-05-06"
+output: html_document
+---
+
+```{r include=FALSE}
+# Clear existing data and graphics
+rm(list=ls())
+graphics.off()
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(include = FALSE)
+
+# Load required libraries
+library(readxl)
+library(dplyr)
+library(stringr)
+library(meta)
+library(metafor)
+library(tidyverse)
+library(psych)
+library(janitor)
+library(here)
+library(scales)
+library(ggrepel)
+```
+
+
+```{r echo=FALSE}
+# ===============================
+# Import and Inspect Data
+
+# Load your data
+data <- readxl::read_xlsx(here::here("Data_Raw",
+                                     "review_561049_20250506232627.xlsx"))
+data <- clean_names(data)
+
+# Inspect data structure
+str(data)
+names(data)
+summary(data)
+head(data)
+```
+
+
+```{r echo=FALSE}
+# Prepare Data
+# Convert score columns to numeric
+data$dice_subgroup1 <- as.numeric(data$dice_score_percent_subgroup_1)
+data$dice_subgroup2 <- as.numeric(data$dice_score_percent_subgroup_2)
+
+# Add placeholder standard errors
+data$se_sub1 <- rep(5, nrow(data))
+data$se_sub2 <- rep(5, nrow(data))
+```
+
+
+```{r echo=FALSE}
+# Prepare Data
+summary(data)
+table(data$study_design)
+table(data$subgroup)
+describe(data$dice_subgroup1)
+describe(data$dice_subgroup2)
+
+```
+
+```{r echo=FALSE}
+# Summarize the diagnostic_technique variable
+technique_counts <- data %>%
+  count(diagnostic_technique) %>%
+  mutate(Percent = round(100 * n / sum(n), 1),
+         Label = paste0(diagnostic_technique, "\n", n, " (", Percent, "%)"))
+
+# Plot pie chart with counts and percentages
+ggplot(technique_counts, aes(x = "", y = n, fill = diagnostic_technique)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  geom_text(aes(label = Label), position = position_stack(vjust = 0.5), size = 3) +
+  labs(title = "Distribution of Diagnostic Techniques",
+       x = NULL, y = NULL, fill = "Technique") +
+  theme_void()
+```
+
+```{r}
+# Summarize the diagnostic_technique variable
+technique_counts <- data %>%
+  count(diagnostic_technique) %>%
+  mutate(
+    Percent = n / sum(n),
+    Label = paste0(diagnostic_technique, "\n", n, " (", percent(Percent, accuracy = 0.1), ")")
+  )
+
+# Compute label position for ggrepel (outside the pie)
+technique_counts <- technique_counts %>%
+  arrange(desc(diagnostic_technique)) %>%
+  mutate(ypos = cumsum(Percent) - 0.5 * Percent)
+
+# Make a better pie chart
+ggplot(technique_counts, aes(x = "", y = Percent, fill = diagnostic_technique)) +
+  geom_bar(stat = "identity", width = 1, color = "white", size = 0.8) +
+  coord_polar("y", start = 0) +
+  geom_text_repel(
+    aes(y = ypos, label = Label),
+    size = 3.5,
+    nudge_x = 1, show.legend = FALSE, segment.size = 0.5
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(
+    title = "Distribution of Diagnostic Techniques",
+    fill = "Technique"
+  ) +
+  theme_void(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right"
+  )
+```
+
+```{r echo=FALSE}
+# Meta-Analysis
+meta_dice1 <- metagen(
+  TE = data$dice_subgroup1,
+  seTE = data$se_sub1,
+  studlab = data$study_id_2,
+  data = data,
+  sm = "MD",
+  common = FALSE,
+  random = TRUE,
+  method.random.ci = TRUE
+)
+
+meta_dice2 <- metagen(
+  TE = data$dice_subgroup2,
+  seTE = data$se_sub2,
+  studlab = data$study_id_2,
+  data = data,
+  sm = "MD",
+  common = FALSE,
+  random = TRUE,
+  method.random.ci = TRUE
+)
+```
+
+
+```{r echo=FALSE}
+# Forest and Funnel Plots
+forest(meta_dice1, main = "Dice Score - Subgroup 1")
+forest(meta_dice2, main = "Dice Score - Subgroup 2")
+
+funnel(meta_dice1)
+funnel(meta_dice2)
+```
+
+
+```{r echo=FALSE}
+# Sensitivity and Specificity Meta-Analysis for Subgroups
+
+# Convert percent values to proportions
+data <- data %>%
+  mutate(
+    sensitivity_subgroup1 = as.numeric(sensitivity_percent_subgroup_1) / 100,
+    sensitivity_subgroup2 = as.numeric(sensitivity_percent_subgroup_2) / 100,
+    specificity_subgroup1 = as.numeric(specificity_percent_subgroup_1) / 100,
+    specificity_subgroup2 = as.numeric(specificity_percent_subgroup_2) / 100
+  )
+
+# Sensitivity - Subgroup 1
+meta_sens1 <- metaprop(
+  event = sensitivity_subgroup1 * 100,
+  n = rep(100, nrow(data)),  # Replace with actual sample size if available
+  studlab = covidence_number,
+  sm = "PLOGIT",
+  method = "Inverse",
+  random = TRUE,
+  data = data
+)
+
+# Specificity - Subgroup 1
+meta_spec1 <- metaprop(
+  event = specificity_subgroup1 * 100,
+  n = rep(100, nrow(data)),
+  studlab = covidence_number,
+  sm = "PLOGIT",
+  method = "Inverse",
+  random = TRUE,
+  data = data
+)
+
+# Sensitivity - Subgroup 2
+meta_sens2 <- metaprop(
+  event = sensitivity_subgroup2 * 100,
+  n = rep(100, nrow(data)),
+  studlab = covidence_number,
+  sm = "PLOGIT",
+  method = "Inverse",
+  random = TRUE,
+  data = data
+)
+
+# Specificity - Subgroup 2
+meta_spec2 <- metaprop(
+  event = specificity_subgroup2 * 100,
+  n = rep(100, nrow(data)),
+  studlab = covidence_number,
+  sm = "PLOGIT",
+  method = "Inverse",
+  random = TRUE,
+  data = data
+)
+
+# Forest plots
+forest(meta_sens1, main = "Sensitivity - Subgroup 1")
+forest(meta_spec1, main = "Specificity - Subgroup 1")
+forest(meta_sens2, main = "Sensitivity - Subgroup 2")
+forest(meta_spec2, main = "Specificity - Subgroup 2")
+
+# Print overall pooled estimates (random effects model)
+cat("Overall Pooled Sensitivity (Subgroup 1):\n")
+cat(sprintf("  %.2f%% (95%% CI: %.2f%%–%.2f%%)\n",
+            meta_sens1$TE.random, meta_sens1$lower.random, meta_sens1$upper.random))
+
+cat("Overall Pooled Specificity (Subgroup 1):\n")
+cat(sprintf("  %.2f%% (95%% CI: %.2f%%–%.2f%%)\n",
+            meta_spec1$TE.random, meta_spec1$lower.random, meta_spec1$upper.random))
+
+cat("Overall Pooled Sensitivity (Subgroup 2):\n")
+cat(sprintf("  %.2f%% (95%% CI: %.2f%%–%.2f%%)\n",
+            meta_sens2$TE.random, meta_sens2$lower.random, meta_sens2$upper.random))
+
+cat("Overall Pooled Specificity (Subgroup 2):\n")
+cat(sprintf("  %.2f%% (95%% CI: %.2f%%–%.2f%%)\n",
+            meta_spec2$TE.random, meta_spec2$lower.random, meta_spec2$upper.random))
+```
+
+```{r echo=FALSE}
+# Check column names first
+print(names(data))
+
+# If raw diagnostic values (TP, FN, TN, FP) are available, compute sensitivity & specificity
+if (all(c("tp", "fn", "tn", "fp") %in% names(data))) {
+  
+  # Compute proportions and sample sizes
+  data <- data %>%
+    mutate(
+      sensitivity = as.numeric(tp) / (tp + fn),
+      specificity = as.numeric(tn) / (tn + fp),
+      n_sens = tp + fn,
+      n_spec = tn + fp
+    )
+  
+  # Sensitivity meta-analysis
+  meta_sens <- metaprop(
+    event = tp,
+    n = n_sens,
+    studlab = covidence_number,
+    sm = "PLOGIT",
+    method = "Inverse",
+    random = TRUE,
+    data = data
+  )
+  
+  # Specificity meta-analysis
+  meta_spec <- metaprop(
+    event = tn,
+    n = n_spec,
+    studlab = covidence_number,
+    sm = "PLOGIT",
+    method = "Inverse",
+    random = TRUE,
+    data = data
+  )
+  
+  # Forest plots with pooled estimates in titles
+  forest(
+    meta_sens,
+    main = sprintf("Sensitivity - All Studies: %.2f%% (95%% CI: %.2f–%.2f%%)",
+                   meta_sens$TE.random,
+                   meta_sens$lower.random,
+                   meta_sens$upper.random)
+  )
+  
+  forest(
+    meta_spec,
+    main = sprintf("Specificity - All Studies: %.2f%% (95%% CI: %.2f–%.2f%%)",
+                   meta_spec$TE.random,
+                   meta_spec$lower.random,
+                   meta_spec$upper.random)
+  )
+  
+} else {
+  cat("⚠️ Columns for TP, FN, TN, FP not found in the dataset.\n")
+  cat("Please make sure your data includes: tp, fn, tn, fp.\n")
+}
+```
+
+```{r echo=FALSE}
+# Subgroup Analysis
+meta_dice1_subgroup <- metagen(
+  TE = data$dice_subgroup1,
+  seTE = data$se_sub1,
+  studlab = data$study_id_2,
+  data = data,
+  sm = "MD",
+  common = FALSE,
+  random = TRUE,
+  method.random.ci = TRUE,
+  byvar = data$subgroup
+)
+
+forest(meta_dice1_subgroup, main = "Subgroup Analysis - Dice Score Subgroup 1")
+```
+
+```{r echo=FALSE}
+# Influence Diagnostics
+rma_dice1 <- rma.uni(yi = data$dice_subgroup1, sei = data$se_sub1, method = "REML")
+influence_dice1 <- influence(rma_dice1)
+plot(influence_dice1)
+
+rma_dice2 <- rma.uni(yi = data$dice_subgroup2, sei = data$se_sub2, method = "REML")
+influence_dice2 <- influence(rma_dice2)
+plot(influence_dice2)
+```
+
+
+```{r echo=FALSE}
+# Meta-Regression
+# Replace 'your_numeric_variable' with an actual numeric moderator
+# Check names(data) and select appropriate column
+# Example: mods = ~ publication_year
+
+
+data <- data %>%
+  mutate(
+    publication_year = str_extract(study_id_2, "\\b(19|20)\\d{2}\\b"),
+    publication_year = as.numeric(publication_year)
+  )
+
+data1 <- data %>% select(study_id_2, publication_year)
+
+rma_reg <- rma(
+  yi = data$dice_subgroup1,
+  sei = data$se_sub1,
+  mods = ~ publication_year,
+  method = "REML",
+  data = data
+)
+
+# Show results
+summary(rma_reg)
+```
+
+```{r echo=FALSE}
+# Meta-Analysis of Sensitivity and Specificity
+# Step 1: Reshape data to long format for both subgroups
+long_data <- bind_rows(
+  data %>%
+    transmute(
+      study_id = study_id_2,
+      subgroup = "Subgroup1",
+      dice = dice_subgroup1,
+      se = se_sub1,
+      n_of_studies_with_meta
+    ),
+  data %>%
+    transmute(
+      study_id = study_id_2,
+      subgroup = "Subgroup2",
+      dice = dice_subgroup2,
+      se = se_sub2,
+      n_of_studies_with_meta
+    )
+) %>%
+  filter(
+    !is.na(dice),
+    !is.na(se),
+    !is.na(n_of_studies_with_meta)
+  )
+
+# Step 2: Run meta-regression
+rma_combined <- rma(
+  yi = long_data$dice,
+  sei = long_data$se,
+  mods = ~ subgroup + n_of_studies_with_meta,
+  method = "REML",
+  data = long_data
+)
+
+# Step 3: Show summary
+summary(rma_combined)
+
+# Step 4: Plot observed vs. predicted Dice scores
+long_data$predicted <- fitted(rma_combined)
+
+ggplot(long_data, aes(x = n_of_studies_with_meta, y = dice, color = subgroup)) +
+  geom_point(size = 2) +
+  geom_line(aes(y = predicted), size = 1) +
+  labs(
+    title = "Meta-Regression Across Subgroups",
+    x = "Number of Studies with Meta",
+    y = "Dice Score"
+  ) +
+  theme_minimal()
+```
+
