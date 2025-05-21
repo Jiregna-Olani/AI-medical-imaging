@@ -1,0 +1,677 @@
+---
+title: "Global Perspective on the Use of Artificial Intelligence in Medical Imaging for Cancer Studies: A Systematic Review and Meta-Analysis"
+author: Jiregna Olani Kedida, Tawadod Abdelgader Abdalla Mohamed, Honoria Ocagli,  Dario Gregori
+date: 2025-05-18
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r include=FALSE}
+# Set Up the Environment
+rm(list = ls())
+graphics.off()
+```
+
+
+```{r echo=FALSE}
+# Load Required Libraries
+library(forcats)
+library(gt)
+library(ggrepel)
+library(here)
+library(janitor)
+library(meta)
+library(metadat)
+library(metafor)
+library(psych)
+library(readxl)
+library(RColorBrewer)
+library(scales)
+library(tibble)
+library(tidyr)
+library(tidyverse)
+```
+
+
+```{r echo=FALSE}
+# Load and Clean Your Dataset
+
+data <- readxl::read_xlsx(here("Data_Raw", "review_561049_20250506232627.xlsx")) %>%
+  clean_names()  # Makes column names lower_case_with_underscores
+
+# Convert Percent Variables to Numeric
+data <- data %>%
+  mutate(
+    dice_subgroup1 = as.numeric("dice_score_percent_subgroup_1"),
+    dice_subgroup2 = as.numeric("dice_score_percent_subgroup_2"),
+    sensitivity_subgroup1 = as.numeric("sensitivity_percent_subgroup_1") / 100,
+    specificity_subgroup1 = as.numeric("specificity_percent_subgroup_1") / 100,
+    sensitivity_subgroup2 = as.numeric("sensitivity_percent_subgroup_2") / 100,
+    specificity_subgroup2 = as.numeric("specificity_percent_subgroup_2") / 100
+  )
+```
+
+
+```{r echo=FALSE}
+# Summary table 1
+# Get names of all columns except 'study_id_2'
+var_names <- setdiff(names(data), "study_id_2")
+
+# Create a tibble with subgroup mapping
+variable_subgroups <- tibble(
+  variable = var_names,
+  subgroup = case_when(
+    str_ends(variable, "1") ~ 1,
+    str_ends(variable, "2") ~ 2,
+    TRUE ~ NA_real_
+  )
+)
+
+# View the mapping
+variable_subgroups %>%
+  gt() %>%
+  tab_header(title = "Subgroup Assignment by Variable Name")
+```
+
+
+```{r echo=FALSE}
+# Summary table 2
+data %>%
+  count(diagnostic_technique, sort = TRUE) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    percent = sprintf("%.1f%%", percent)
+  ) %>%
+  gt() %>%
+  tab_header(title = "Diagnostic Techniques Used Across Studies") %>%
+  cols_label(
+    diagnostic_technique = "Diagnostic Technique",
+    n = "Frequency (n)",
+    percent = "Percent (%)"
+  ) %>%
+  fmt_number(
+    columns = "n",
+    decimals = 0
+  )
+```
+
+
+```{r echo=FALSE}
+# Summary table 3
+patterns <- c("MRI", "CT scan", "PET-CT Scans", "PET", "Ultrasonography", "X- Ray", "Other")
+names(patterns) <- c("MRI", "CT scan", "PET-CT Scans", "PET", "Ultrasonography", "X-Ray", "Others")
+
+counts <- sapply(patterns, function(p) sum(grepl(p, data$diagnostic_technique, ignore.case = TRUE)))
+category_summary <- data.frame(
+  diagnostic_technique = names(counts),
+  n = as.integer(counts),
+  percent = round(100 * counts / nrow(data), 1)
+)
+
+category_summary %>%
+  gt() %>%
+  tab_header(title = "Diagnostic Technique Frequency and Percentages")
+```
+
+
+```{r echo=FALSE}
+category_summary <- data.frame(
+    diagnostic_technique = c('MRI', 'CT scan', 'PET-CT Scans', 'PET', 'Ultrasonography', 'X-Ray', 'Others'),
+    n = c(55, 41, 9, 14, 6, 6, 8)
+)
+
+category_summary <- category_summary %>%
+    mutate(percent = n / sum(n) * 100,
+           label = paste0(diagnostic_technique, "\n", n, " (", round(percent, 1), "%)")) %>%
+    arrange(desc(diagnostic_technique)) %>%
+    mutate(
+        ymax = cumsum(n),
+        ymin = c(0, head(ymax, -1)),
+        ypos = (ymax + ymin) / 2
+    )
+
+ggplot(category_summary, aes(x = "", y = n, fill = diagnostic_technique)) +
+    geom_col(width = 1, color = "white", show.legend = TRUE) +
+    coord_polar(theta = "y") +
+    geom_text_repel(
+        aes(y = ypos, label = label),
+        nudge_x = 0.3,
+        direction = "y",
+        size = 4,
+        show.legend = FALSE,
+        segment.size = 0,      # Removes the lines connecting labels to pie
+        box.padding = 0.7,
+        point.padding = 0.8,
+        force = 2
+    ) +
+    scale_fill_brewer(palette = "Set3") +
+    labs(title = "Distribution of Diagnostic Techniques") +
+    theme_void() +
+    theme(
+        plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 12)
+    )
+```
+
+
+```{r echo=FALSE}
+# Graph of "Type of AI Used" in each studies
+ml_type_combined <- data %>%
+  select(type_of_ml_used_subgroup_1, type_of_ml_used_subgroup_2) %>%
+  tidyr::pivot_longer(
+    cols = c(type_of_ml_used_subgroup_1, type_of_ml_used_subgroup_2),
+    names_to = "Subgroup", values_to = "ML_Type"
+  ) %>%
+  filter(!is.na(ML_Type) & ML_Type != "")
+
+# Count frequencies and calculate percentages
+ml_type_counts <- ml_type_combined %>%
+  count(ML_Type, sort = TRUE) %>%
+  mutate(
+    Percentage = n / sum(n),
+    Percentage_Label = paste0(n, " (", percent(Percentage, accuracy = 0.1), ")")
+  )
+
+# Print table of counts and percentages
+print(ml_type_counts)
+
+# Plot with both counts and percentages as labels
+ggplot(ml_type_counts, aes(x = reorder(ML_Type, n), y = n)) +
+  geom_bar(stat = "identity", fill = "darkblue") +
+  coord_flip() +
+  geom_text(aes(label = Percentage_Label), hjust = -0.1, size = 3.5) +
+  labs(
+    title = "Frequency distribution of AI Types Used in each studies",
+    x = "Type of ML Used",
+    y = "Frequency"
+  ) +
+  ylim(0, max(ml_type_counts$n) * 1.15)
+```
+
+
+```{r echo=FALSE}
+# Table 4
+# Create a summary table for the meta-analysis results
+summary_table <- data %>%
+  # Keep only rows with a dice score in either subgroup column
+  filter(
+    !is.na(dice_score_percent_subgroup_1) | !is.na(dice_score_percent_subgroup_2)
+  ) %>%
+  group_by(study_id_2, field_of_application, diagnostic_technique) %>%
+  summarise(
+    total_numbers_of_studies = sum(total_number_of_studies, na.rm = TRUE),
+    n_of_patients_in_meta = sum(n_of_patients_in_meta, na.rm = TRUE),
+    `I2 percent` = coalesce(first(na.omit(i2_percent_subgroup_1)), first(na.omit(i2_percent_subgroup_2))),
+    dice_score = coalesce(first(na.omit(dice_score_percent_subgroup_1)), first(na.omit(dice_score_percent_subgroup_2))),
+    q_test = coalesce(first(na.omit(q_test_subgroup_1)), first(na.omit(q_test_subgroup_2)))
+  ) %>%
+  ungroup()
+
+print(summary_table)
+```
+
+
+```{r echo=FALSE}
+# Summary 5: Study Design Frequency
+data %>%
+  count(study_design) %>%
+  arrange(desc(n)) %>%
+  mutate(percent = round(100 * n / sum(n), 1)) %>%
+  gt() %>%
+  tab_header(title = "Study Designs in the Umbrella Review")
+```
+
+
+```{r echo=FALSE}
+data %>%
+  select("dice_score_percent_subgroup_1", "dice_score_percent_subgroup_2") %>%
+  mutate(
+    `Subgroup 1` = as.numeric(dice_score_percent_subgroup_1),
+    `Subgroup 2` = as.numeric(dice_score_percent_subgroup_2)
+  ) %>%
+  pivot_longer(
+    everything(),
+    names_to = "Subgroup",
+    values_to = "Dice"
+  ) %>%
+  filter(!is.na(Dice) & is.finite(Dice)) %>%
+  ggplot(aes(x = Subgroup, y = Dice, fill = Subgroup)) +
+  geom_boxplot(outlier.shape = 21, outlier.fill = "white", outlier.color = "black") +
+  labs(
+    title = "Dice Score Distribution by Subgroup",
+    y = "Dice Score (%)",
+    x = NULL
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+```
+
+
+```{r echo=FALSE}
+# Convert scores (already done earlier, but just in case)
+data <- data %>%
+  mutate(
+    dice_subgroup1 = as.numeric(dice_score_percent_subgroup_1),
+    dice_subgroup2 = as.numeric(dice_score_percent_subgroup_2),
+    se_sub1 = rep(5, n()),  # placeholder standard error
+    se_sub2 = rep(5, n())
+  )
+
+meta_dice1 <- metagen(
+  TE = dice_subgroup1,
+  seTE = se_sub1,
+  studlab = study_id_2,
+  data = data,
+  sm = "MD",
+  random = TRUE
+)
+
+meta_dice2 <- metagen(
+  TE = dice_subgroup2,
+  seTE = se_sub2,
+  studlab = study_id_2,
+  data = data,
+  sm = "MD",
+  random = TRUE
+)
+
+# Then draw forest plots again
+forest(meta_dice1, main = "Forest Plot: Dice Score - Subgroup 1")
+forest(meta_dice2, main = "Forest Plot: Dice Score - Subgroup 2")
+```
+
+
+```{r echo=FALSE}
+# Data Validation and Cleaning  
+data_clean <- data %>%
+  mutate(
+    dice_subgroup1 = as.numeric(dice_score_percent_subgroup_1),
+    dice_subgroup2 = as.numeric(dice_score_percent_subgroup_2)
+  ) %>%
+  filter(
+    !is.na(dice_subgroup1) & is.finite(dice_subgroup1),
+    !is.na(dice_subgroup2) & is.finite(dice_subgroup2)
+  ) %>%
+  mutate(
+    se_sub1 = 5,  # placeholder standard error
+    se_sub2 = 5
+  )
+
+meta_dice1 <- metagen(
+  TE = dice_subgroup1,
+  seTE = se_sub1,
+  studlab = study_id_2,
+  data = data_clean,
+  sm = "MD",
+  random = TRUE
+)
+
+meta_dice2 <- metagen(
+  TE = dice_subgroup2,
+  seTE = se_sub2,
+  studlab = study_id_2,
+  data = data_clean,
+  sm = "MD",
+  random = TRUE
+)
+```
+
+
+```{r echo=FALSE}
+# Meta-Analysis Data for Both Subgroups
+
+# Ensure numeric and finite, and remove missing/invalid values for meta-analysis
+meta_data1 <- data %>%
+  mutate(
+    dice_subgroup1 = as.numeric(dice_subgroup1),
+    se_sub1 = as.numeric(se_sub1)
+  ) %>%
+  filter(!is.na(dice_subgroup1) & !is.na(se_sub1),
+         is.finite(dice_subgroup1) & is.finite(se_sub1))
+
+meta_data2 <- data %>%
+  mutate(
+    dice_subgroup2 = as.numeric(dice_subgroup2),
+    se_sub2 = as.numeric(se_sub2)
+  ) %>%
+  filter(!is.na(dice_subgroup2) & !is.na(se_sub2),
+         is.finite(dice_subgroup2) & is.finite(se_sub2))
+
+#  Run Meta-Analyses
+
+meta_dice1 <- metagen(
+  TE = meta_data1$dice_subgroup1,
+  seTE = meta_data1$se_sub1,
+  studlab = meta_data1$study_id_2,
+  data = meta_data1,
+  sm = "MD",
+  random = TRUE
+)
+
+meta_dice2 <- metagen(
+  TE = meta_data2$dice_subgroup2,
+  seTE = meta_data2$se_sub2,
+  studlab = meta_data2$study_id_2,
+  data = meta_data2,
+  sm = "MD",
+  random = TRUE
+)
+
+# # ===============================
+# # Funnel Plot: Subgroup 1 with Labels
+# 
+# funnel(meta_dice1,
+#        main = "Funnel Plot - Dice Score (Subgroup 1)",
+#        pch = 21,
+#        bg = "skyblue",
+#        cex = 1.3,
+#        xlab = "Effect Size (Dice Score)",
+#        ylab = "Standard Error")
+# 
+# text(
+#   x = meta_dice1$TE,
+#   y = meta_dice1$seTE,
+#   labels = meta_dice1$studlab,
+#   pos = 3,
+#   offset = 0.3,
+#   cex = 0.7,
+#   col = "black"
+# )
+# 
+# # ===============================
+# # Funnel Plot: Subgroup 2 with Labels
+# 
+# funnel(meta_dice2,
+#        main = "Funnel Plot - Dice Score (Subgroup 2)",
+#        pch = 21,
+#        bg = "salmon",
+#        cex = 1.3,
+#        xlab = "Effect Size (Dice Score)",
+#        ylab = "Standard Error")
+# 
+# text(
+#   x = meta_dice2$TE,
+#   y = meta_dice2$seTE,
+#   labels = meta_dice2$studlab,
+#   pos = 3,
+#   offset = 0.3,
+#   cex = 0.7,
+#   col = "black"
+# )
+```
+
+
+```{r echo=FALSE}
+# Funnel Plots for both subgroups
+
+funnel(meta_dice1, main = "Funnel Plot - Subgroup 1")
+funnel(meta_dice2, main = "Funnel Plot - Subgroup 2")
+```
+
+
+```{r echo=FALSE}
+# Draw forest plots
+forest(meta_dice1, main = "Forest Plot: Dice Score - Subgroup 1")
+forest(meta_dice2, main = "Forest Plot: Dice Score - Subgroup 2")
+```
+
+
+```{r echo=FALSE}
+# Extract year from study_id_2
+data <- data %>%
+  mutate(publication_year = str_extract(study_id_2, "\\b(19|20)\\d{2}\\b") %>% as.numeric())
+
+# Meta-regression
+rma_meta_reg <- rma(
+  yi = dice_subgroup1,
+  sei = se_sub1,
+mods = ~ diagnostic_technique + n_of_studies_with_meta,
+  method = "REML",
+  data = data
+)
+
+summary(rma_meta_reg)
+```
+
+
+```{r echo=FALSE}
+tibble(
+  Subgroup = c("1", "2"),
+  Dice_Mean = c(meta_dice1$TE.random, meta_dice2$TE.random),
+  Lower_CI = c(meta_dice1$lower.random, meta_dice2$lower.random),
+  Upper_CI = c(meta_dice1$upper.random, meta_dice2$upper.random)
+) %>%
+  gt() %>%
+  tab_header(title = "Overall Pooled Dice Score (Random Effects Model)")
+```
+
+
+```{r echo=FALSE}
+# Cumulative Meta-analysis for both subgroups
+meta_dice1_cum <- metacum(meta_dice1, sortvar = meta_data1$publication_year)
+forest(meta_dice1_cum, main = "Cumulative Meta-analysis - Subgroup 1")
+
+meta_dice2_cum <- metacum(meta_dice2, sortvar = meta_data2$publication_year)
+forest(meta_dice2_cum, main = "Cumulative Meta-analysis - Subgroup 2")
+```
+
+
+
+
+```{r echo=FALSE}
+# (Optional) Clean column names for consistency
+# data <- data %>% clean_names() # Not used since you provided final names
+
+# --- Convert relevant columns to numeric for analysis ---
+numeric_columns <- c(
+  "sensitivity_percent_subgroup_1", "sensitivity_percent_subgroup_2",
+  "specificity_percent_subgroup_1", "specificity_percent_subgroup_2",
+  "area_under_the_curve_auc_in_percent_subgroup_1", "area_under_the_curve_auc_in_percent_subgroup_2",
+  "accuracy_subgroup_1", "accuracy_subgroup_2",
+  "dice_score_percent_subgroup_1", "dice_score_percent_subgroup_2",
+  "positive_likelihood_ratio_subgroup_1", "positive_likelihood_ratio_subgroup_2",
+  "negative_likelihood_ratio_subgroup_1", "negative_likelihood_ratio_subgroup_2",
+  "positive_predictive_value_subgroup_1", "positive_predictive_value_subgroup_2",
+  "negative_predictive_value_subgroup_1", "negative_predictive_value_subgroup_2",
+  "diagnostic_odds_ratio_subgroup_1", "diagnostic_odds_ratio_subgroup_2",
+  "i2_percent_subgroup_1", "i2_percent_subgroup_2",
+  "publication_bias_percent_subgroup_1", "publication_bias_percent_subgroup_2",
+  "false_positive_proportion_fpp_in_percent_subgroup_1", "false_positive_proportion_fpp_in_percent_subgroup_2",
+  "false_negative_proportion_fnp_in_percent_subgroup_1", "false_negative_proportion_fnp_in_percent_subgroup_2"
+)
+
+data[numeric_columns] <- data[numeric_columns] %>%
+  lapply(function(x) as.numeric(gsub("[^0-9\\.]", "", as.character(x))))
+
+# 1. General Study Characteristics
+n_reviews <- data %>% distinct(covidence_number, study_id_5) %>% nrow()
+
+study_design_freq <- data %>% count(study_design, sort = TRUE)
+
+funding_reported <- data %>% filter(!is.na(study_funding_sources) & study_funding_sources != "") %>% nrow()
+conflict_reported <- data %>% filter(!is.na(possible_conflicts_of_interest_for_study_authors) & possible_conflicts_of_interest_for_study_authors != "") %>% nrow()
+
+# 2. Clinical and Methodological Data
+field_freq <- data %>% count(field_of_application, sort = TRUE)
+diagnostic_tech_freq <- data %>% count(diagnostic_technique, sort = TRUE)
+
+# 3. Meta-analysis and Outcomes
+meta_summary <- data %>%
+  group_by(study_id_5) %>%
+  summarize(
+    total_studies = unique(total_number_of_studies),
+    n_meta = unique(n_of_studies_with_meta),
+    n_patients = unique(n_of_patients_in_meta),
+    outcome_types = paste(unique(outcome), collapse = "; ")
+  )
+
+# 4. ML Approaches
+ml_type1_freq <- data %>% count(type_of_ml_used_subgroup_1, sort = TRUE)
+ml_type2_freq <- data %>% count(type_of_ml_used_subgroup_2, sort = TRUE)
+algo1_freq <- data %>% count(specific_algorithm_subgroup_1, sort = TRUE)
+algo2_freq <- data %>% count(specific_algorithm_subgroup_2, sort = TRUE)
+
+# 5. Diagnostic Performance (by subgroup)
+diagnostic_metrics <- function(metric_sub1, metric_sub2, label) {
+  tibble(
+    Metric = label,
+    Subgroup1_Mean = mean(data[[metric_sub1]], na.rm = TRUE),
+    Subgroup1_SD = sd(data[[metric_sub1]], na.rm = TRUE),
+    Subgroup2_Mean = mean(data[[metric_sub2]], na.rm = TRUE),
+    Subgroup2_SD = sd(data[[metric_sub2]], na.rm = TRUE)
+  )
+}
+
+metrics_table <- bind_rows(
+  diagnostic_metrics("sensitivity_percent_subgroup_1", "sensitivity_percent_subgroup_2", "Sensitivity (%)"),
+  diagnostic_metrics("specificity_percent_subgroup_1", "specificity_percent_subgroup_2", "Specificity (%)"),
+  diagnostic_metrics("area_under_the_curve_auc_in_percent_subgroup_1", "area_under_the_curve_auc_in_percent_subgroup_2", "AUC (%)"),
+  diagnostic_metrics("accuracy_subgroup_1", "accuracy_subgroup_2", "Accuracy"),
+  diagnostic_metrics("dice_score_percent_subgroup_1", "dice_score_percent_subgroup_2", "Dice score (%)"),
+  diagnostic_metrics("positive_likelihood_ratio_subgroup_1", "positive_likelihood_ratio_subgroup_2", "Positive Likelihood Ratio"),
+  diagnostic_metrics("negative_likelihood_ratio_subgroup_1", "negative_likelihood_ratio_subgroup_2", "Negative Likelihood Ratio"),
+  diagnostic_metrics("positive_predictive_value_subgroup_1", "positive_predictive_value_subgroup_2", "Positive Predictive Value"),
+  diagnostic_metrics("negative_predictive_value_subgroup_1", "negative_predictive_value_subgroup_2", "Negative Predictive Value"),
+  diagnostic_metrics("diagnostic_odds_ratio_subgroup_1", "diagnostic_odds_ratio_subgroup_2", "Diagnostic Odds Ratio"),
+  diagnostic_metrics("i2_percent_subgroup_1", "i2_percent_subgroup_2", "I² (%)"),
+  diagnostic_metrics("publication_bias_percent_subgroup_1", "publication_bias_percent_subgroup_2", "Publication Bias (%)"),
+  diagnostic_metrics("false_positive_proportion_fpp_in_percent_subgroup_1", "false_positive_proportion_fpp_in_percent_subgroup_2", "False Positive Proportion (%)"),
+  diagnostic_metrics("false_negative_proportion_fnp_in_percent_subgroup_1", "false_negative_proportion_fnp_in_percent_subgroup_2", "False Negative Proportion (%)")
+)
+
+# Publication Bias and Heterogeneity
+pub_bias <- data %>%
+  select(study_id_5, publication_bias_percent_subgroup_1, publication_bias_percent_subgroup_2, i2_percent_subgroup_1, i2_percent_subgroup_2, q_test_subgroup_1, q_test_subgroup_2)
+
+
+# Bar chart: ML type frequency for Subgroup 1
+ggplot(ml_type1_freq, aes(x = reorder(type_of_ml_used_subgroup_1, n), y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Type of ML Used (Subgroup 1)", x = "ML Type (Subgroup 1)", y = "Frequency")
+
+# Bar chart: ML type frequency for Subgroup 2
+ggplot(ml_type2_freq, aes(x = reorder(type_of_ml_used_subgroup_2, n), y = n)) +
+  geom_bar(stat = "identity", fill = "darkred") +
+  coord_flip() +
+  labs(title = "Type of ML Used (Subgroup 2)", x = "ML Type (Subgroup 2)", y = "Frequency")
+
+# Boxplot: Sensitivity by Subgroup
+data_long <- data %>%
+  pivot_longer(cols = c(sensitivity_percent_subgroup_1, sensitivity_percent_subgroup_2),
+               names_to = "subgroup", values_to = "sensitivity")
+
+ggplot(data_long, aes(x = subgroup, y = sensitivity)) +
+  geom_boxplot(fill = "gold") +
+  labs(title = "Sensitivity Distribution by Subgroup", x = "Subgroup", y = "Sensitivity (%)")
+
+# Print some outputs to console
+cat("Number of unique reviews:", n_reviews, "\n")
+cat("Number reporting funding:", funding_reported, "\n")
+cat("Number reporting conflicts of interest:", conflict_reported, "\n")
+print(study_design_freq)
+print(field_freq)
+print(diagnostic_tech_freq)
+print(meta_summary)
+print(ml_type1_freq)
+print(metrics_table)
+```
+
+
+```{r echo=FALSE}
+# Define diagnostic technique patterns and names
+patterns <- c("MRI", "CT scan", "PET-CT Scans", "PET", "Ultrasonography", "X- Ray", "Other")
+names(patterns) <- c("MRI", "CT scan", "PET-CT Scans", "PET", "Ultrasonography", "X-Ray", "Others")
+
+# Extract publication year
+if ("publication_year" %in% names(data)) {
+    data$publication_year <- as.numeric(data$publication_year)
+} else if ("year" %in% names(data)) {
+    data$publication_year <- as.numeric(data$year)
+} else if ("publication_date" %in% names(data)) {
+    data$publication_year <- as.numeric(substr(data$publication_date, 1, 4))
+} else {
+    stop("No publication year variable found!")
+}
+
+# Classify by diagnostic technique pattern
+data$diagnostic_technique_category <- "Others"
+for (p in names(patterns)) {
+    matches <- grepl(patterns[p], data$diagnostic_technique, ignore.case = TRUE)
+    data$diagnostic_technique_category[matches] <- names(patterns)[which(names(patterns) == p)]
+}
+data$diagnostic_technique_category[data$diagnostic_technique_category == "X- Ray"] <- "X-Ray"
+
+# Summarize counts by year and diagnostic technique, keep all years/techniques
+dt_year_summary <- data %>%
+    filter(!is.na(publication_year)) %>%
+    count(publication_year, diagnostic_technique_category) %>%
+    complete(publication_year, diagnostic_technique_category, fill = list(n = 0))
+
+# Order techniques by total overall frequency
+tech_order <- dt_year_summary %>%
+    group_by(diagnostic_technique_category) %>%
+    summarise(total = sum(n)) %>%
+    arrange(desc(total)) %>%
+    pull(diagnostic_technique_category)
+dt_year_summary$diagnostic_technique_category <- factor(dt_year_summary$diagnostic_technique_category, levels = tech_order)
+
+# Best line graph
+ggplot(dt_year_summary, aes(x = publication_year, y = n, color = diagnostic_technique_category)) +
+    geom_line(linewidth = 1.2, alpha = 0.9) +
+    geom_point(size = 2, alpha = 0.9) +
+    scale_color_brewer(palette = "Dark2") +
+    labs(
+        title = "Trends in Diagnostic Techniques Used by Publication Year",
+        x = "Publication Year",
+        y = "Number of Reviews",
+        color = "Diagnostic Technique"
+    ) +
+    theme_minimal(base_size = 15) +
+    theme(
+        panel.grid.minor = element_blank(),
+        legend.position = "top",
+        legend.title = element_text(face = "bold"),
+        legend.text = element_text(size = 12),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14)
+    ) +
+    scale_x_continuous(breaks = sort(unique(dt_year_summary$publication_year)))
+```
+
+```{r}
+# Add a variable that groups rare cancer types as "Other"
+data <- data %>%
+  filter(!is.na(field_of_application) & field_of_application != "") %>%
+  group_by(field_of_application) %>%
+  mutate(
+    type_of_cancer = ifelse(n() == 1, "Other", field_of_application)
+  ) %>%
+  ungroup()
+
+# Prepare summary data with the new grouping
+summary_df <- data %>%
+  count(type_of_cancer, name = "n") %>%
+  arrange(desc(n)) %>%
+  mutate(percent = round(100 * n / sum(n), 2))
+
+# Bar Plot: Number of studies by cancer type (with "Other" grouped)
+ggplot(summary_df, aes(x = reorder(type_of_cancer, n), y = n, fill = type_of_cancer)) +
+  geom_col(show.legend = FALSE, width = 0.7) +
+  geom_text(aes(label = paste0(n, " (", percent, "%)")), hjust = -0.05, size = 5) +
+  coord_flip() +
+  labs(
+    title = "Number of Studies by Cancer Type",
+    x = "Cancer Type",
+    y = "Number of Studies"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(axis.text.y = element_text(face = "bold"))
+```
+
+

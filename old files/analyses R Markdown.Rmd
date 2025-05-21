@@ -1,7 +1,5 @@
 ---
-title: "Global Perspective on the Use of Artificial Intelligence in Medical Imaging for Cancer Studies: A Systematic Review and 
-Meta-Analysis"
-
+title: "Global Perspective on the Use of Artificial Intelligence in Medical Imaging for Cancer Studies: A Systematic Review and Meta-Analysis"
 author: Jiregna Olani Kedida, Honoria Ocagli, Tawadod Abdelgader Abdalla Mohamed, Corrado Lanera, Dario Gregori
 date: "2025-05-06"
 output: html_document
@@ -15,7 +13,6 @@ graphics.off()
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(include = FALSE)
 
 # required libraries
 library(tidyverse)
@@ -88,6 +85,26 @@ ggplot(technique_counts, aes(x = "", y = n, fill = diagnostic_technique)) +
   labs(title = "Distribution of Diagnostic Techniques",
        x = NULL, y = NULL, fill = "Technique") +
   theme_void()
+```
+
+```{r echo=FALSE}
+
+# Summarize the diagnostic_technique variable
+technique_counts <- data %>%
+  count(diagnostic_technique) %>%
+  mutate(Percent = round(100 * n / sum(n), 1),
+         Label = paste0(diagnostic_technique, "\n", n, " (", Percent, "%)"))
+
+# Plot improved pie chart
+ggplot(technique_counts, aes(x = "", y = n, fill = fct_reorder(diagnostic_technique, n))) +
+  geom_col(width = 1, color = "white") +
+  coord_polar("y", start = 0) +
+  geom_text(aes(label = Label), position = position_stack(vjust = 0.5), size = 4, color = "black") +
+  scale_fill_brewer(palette = "Set3") +
+  labs(title = "Distribution of Diagnostic Techniques", fill = "Technique") +
+  theme_void() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
 ```
 
 
@@ -416,69 +433,5 @@ ggplot(long_data, aes(x = n_of_studies_with_meta, y = dice, color = subgroup)) +
   ) +
   theme_minimal()
 ```
-
-
-```{r echo=FALSE}
-# Define required metrics columns for complete cases
-metrics_cols <- c(
-  "sensitivity_percent_subgroup_1", "sensitivity_percent_subgroup_2",
-  "specificity_percent_subgroup_1", "specificity_percent_subgroup_2",
-  "positive_likelihood_ratio_subgroup_1", "positive_likelihood_ratio_subgroup_2",
-  "negative_likelihood_ratio_subgroup_1", "negative_likelihood_ratio_subgroup_2",
-  "positive_predictive_value_subgroup_1", "positive_predictive_value_subgroup_2",
-  "negative_predictive_value_subgroup_1", "negative_predictive_value_subgroup_2",
-  "diagnostic_odds_ratio_subgroup_1", "diagnostic_odds_ratio_subgroup_2",
-  "area_under_the_curve_auc_in_percent_subgroup_1", "area_under_the_curve_auc_in_percent_subgroup_2",
-  "p_value_subgroup_1", "p_value_subgroup_2",
-  "dice_score_percent_subgroup_1", "dice_score_percent_subgroup_2",
-  "q_test_subgroup_1", "q_test_subgroup_2",
-  "accuracy_subgroup_1", "accuracy_subgroup_2"
-)
-
-# Filter data for complete cases
-meta_table <- data %>%
-  # filter(if_all(all_of(metrics_cols), ~ !is.na(.))) %>%
-  transmute(
-    Author_Year = paste0(reviewer_name, " (", study_id_2, ")"),
-    Country = field_of_application,
-    Outcome = outcome,
-    N_Studies = n_of_studies_with_meta,
-    N_Patients = n_of_patients_in_meta,
-    Type_ML_1 = type_of_ml_used_subgroup_1,
-    Type_ML_2 = type_of_ml_used_subgroup_2,
-    Algorithm_1 = specific_algorithm_subgroup_1,
-    Algorithm_2 = specific_algorithm_subgroup_2,
-    Sensitivity_1 = sensitivity_percent_subgroup_1,
-    Sensitivity_2 = sensitivity_percent_subgroup_2,
-    Specificity_1 = specificity_percent_subgroup_1,
-    Specificity_2 = specificity_percent_subgroup_2,
-    PLR_1 = positive_likelihood_ratio_subgroup_1,
-    PLR_2 = positive_likelihood_ratio_subgroup_2,
-    NLR_1 = negative_likelihood_ratio_subgroup_1,
-    NLR_2 = negative_likelihood_ratio_subgroup_2,
-    PPV_1 = positive_predictive_value_subgroup_1,
-    PPV_2 = positive_predictive_value_subgroup_2,
-    NPV_1 = negative_predictive_value_subgroup_1,
-    NPV_2 = negative_predictive_value_subgroup_2,
-    DOR_1 = diagnostic_odds_ratio_subgroup_1,
-    DOR_2 = diagnostic_odds_ratio_subgroup_2,
-    AUC_1 = area_under_the_curve_auc_in_percent_subgroup_1,
-    AUC_2 = area_under_the_curve_auc_in_percent_subgroup_2,
-    p_value_1 = p_value_subgroup_1,
-    p_value_2 = p_value_subgroup_2,
-    Dice_1 = dice_score_percent_subgroup_1,
-    Dice_2 = dice_score_percent_subgroup_2,
-    Q_test_1 = q_test_subgroup_1,
-    Q_test_2 = q_test_subgroup_2,
-    Accuracy_1 = accuracy_subgroup_1,
-    Accuracy_2 = accuracy_subgroup_2
-  )
-
-# Display with gt
-meta_table %>%
-  gt() %>%
-  tab_header(title = "Characteristics and Quantitative Synthesis of Meta-Analyses (Complete Cases)")
-```
-
 
 
