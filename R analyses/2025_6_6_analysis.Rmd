@@ -1,9 +1,12 @@
 ---
-title: "Global Perspective on the Use of Artificial Intelligence in Medical Imaging for Cancer Studies: An umbrella Review of Systematic Review and Meta-Analyses"
-author: Jiregna Olani Kedida,  Tawadod Abdelgader Abdalla Mohamed, Honoria Ocagli, Corrado Lanera, Dario Gregori
+title: ""Global Perspective on the Use of Artificial Intelligence in Medical Imaging"
+  for Cancer Studies: An umbrella Review of Systematic Review and Meta-Analyses"
+author: Jiregna Olani Kedida,  Tawadod Abdelgader Abdalla Mohamed, Honoria Ocagli,
+  Corrado Lanera, Dario Gregori
 date: "2025-05-20"
 output:
   html_document: default
+  pdf_document: default
   word_document: default
 ---
 
@@ -29,21 +32,21 @@ library(tidyr)
 library(tidyverse)
 ```
 
-
 ```{r echo=FALSE}
 # Load and Clean Your Dataset
 
 data <- readxl::read_xlsx(here("Data_Raw", "review_561049_20250506232627.xlsx")) %>%
   clean_names()  # Makes column names lower_case_with_underscores
+
 # Convert Percent Variables to Numeric
 data <- data %>%
   mutate(
-    dice_subgroup1 = as.numeric("dice_score_percent_subgroup_1"),
-    dice_subgroup2 = as.numeric("dice_score_percent_subgroup_2"),
-    sensitivity_subgroup1 = as.numeric("sensitivity_percent_subgroup_1") / 100,
-    specificity_subgroup1 = as.numeric("specificity_percent_subgroup_1") / 100,
-    sensitivity_subgroup2 = as.numeric("sensitivity_percent_subgroup_2") / 100,
-    specificity_subgroup2 = as.numeric("specificity_percent_subgroup_2") / 100
+    dice_subgroup1 = as.numeric(dice_score_percent_subgroup_1),
+    dice_subgroup2 = as.numeric(dice_score_percent_subgroup_2),
+    sensitivity_subgroup1 = as.numeric(sensitivity_percent_subgroup_1) / 100,
+    specificity_subgroup1 = as.numeric(specificity_percent_subgroup_1) / 100,
+    sensitivity_subgroup2 = as.numeric(sensitivity_percent_subgroup_2) / 100,
+    specificity_subgroup2 = as.numeric(specificity_percent_subgroup_2) / 100
   )
 ```
 
@@ -76,64 +79,92 @@ data %>%
 ```
 
 
-```{r echo=FALSE}
-# Summary table 2
-patterns <- c("MRI", "CT scan", "PET-CT Scans", "PET", "Ultrasonography", "X- Ray", "Other")
-names(patterns) <- c("MRI", "CT scan", "PET-CT Scans", "PET", "Ultrasonography", "X-Ray", "Others")
 
-counts <- sapply(patterns, function(p) sum(grepl(p, data$diagnostic_technique, ignore.case = TRUE)))
-category_summary <- data.frame(
-  diagnostic_technique = names(counts),
-  n = as.integer(counts),
-  percent = round(100 * counts / nrow(data), 1)
-)
 
-category_summary %>%
-  gt() %>%
-  tab_header(title = "Diagnostic Technique Frequency and Percentages")
+```{r}
+# mutating "X- Ray" to "X-Ray" 
+data <- data %>%
+  mutate(diagnostic_technique = str_replace_all(diagnostic_technique, "X- Ray", "X-Ray"))
 ```
 
 
-```{r echo=FALSE}
-category_summary <- data.frame(
-    diagnostic_technique = c('MRI', 'CT scan', 'PET-CT Scans', 'PET', 'Ultrasonography', 'X-Ray', 'Others'),
-    n = c(55, 41, 9, 14, 6, 6, 8)
-)
+```{r}
+# Function to extract occurrences of diagnostic categories correctly
+extract_occurrences <- function(data, category) {
+  data %>%
+    filter(str_detect(diagnostic_technique, fixed(category, ignore_case = TRUE))) %>%
+    group_by(diagnostic_technique) %>%
+    summarise(Frequency = n()) %>%
+    arrange(desc(Frequency))
+}
 
-category_summary <- category_summary %>%
-    mutate(percent = n / sum(n) * 100,
-           label = paste0(diagnostic_technique, "\n", n, " (", round(percent, 1), "%)")) %>%
-    arrange(desc(diagnostic_technique)) %>%
-    mutate(
-        ymax = cumsum(n),
-        ymin = c(0, head(ymax, -1)),
-        ypos = (ymax + ymin) / 2
-    )
+### Extract occurrence of each separated category dynamically
+MRI_summary <- extract_occurrences(data, "MRI")
+CT_summary <- extract_occurrences(data, "CT scan")
+PET_summary <- extract_occurrences(data, "PET")
+PET_CT_summary <- extract_occurrences(data, "PET-CT Scans")
+XRay_summary <- extract_occurrences(data, "X-Ray")
+Ultrasound_summary <- extract_occurrences(data, "Ultrasonography")
 
-ggplot(category_summary, aes(x = "", y = n, fill = diagnostic_technique)) +
-    geom_col(width = 1, color = "white", show.legend = TRUE) +
-    coord_polar(theta = "y") +
-    geom_text_repel(
-        aes(y = ypos, label = label),
-        nudge_x = 0.3,
-        direction = "y",
-        size = 4,
-        show.legend = FALSE,
-        segment.size = 0,      
-        box.padding = 0.7,
-        point.padding = 0.8,
-        force = 2
-    ) +
-    scale_fill_brewer(palette = "Set3") +
-    labs(title = "Distribution of Diagnostic Techniques") +
-    theme_void() +
-    theme(
-        plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
-        legend.title = element_blank(),
-        legend.text = element_text(size = 12)
-    )
+Others_summary <- data %>%
+  filter(str_detect(diagnostic_technique, "Other")) %>%  # Capture all variations with "Other:"
+  mutate(diagnostic_technique = "Others") %>%
+  group_by(diagnostic_technique) %>%
+  summarise(Frequency = n()) %>%
+  arrange(desc(Frequency))
+
+### Calculating total occurrences of each category dynamically
+total_MRI <- sum(MRI_summary$Frequency)
+total_CT <- sum(CT_summary$Frequency)
+total_PET <- sum(PET_summary$Frequency)
+total_PET_CT <- sum(PET_CT_summary$Frequency)
+total_XRay <- sum(XRay_summary$Frequency)
+total_Ultrasound <- sum(Ultrasound_summary$Frequency)
+total_Others <- sum(Others_summary$Frequency)  # Dynamically ensuring correct count
+
+
+cat("Total occurrences:\n",
+    "MRI:", total_MRI, "\n",
+    "CT scan:", total_CT, "\n",
+    "PET:", total_PET, "\n",
+    "PET-CT Scans:", total_PET_CT, "\n",
+    "X-Ray:", total_XRay, "\n",
+    "Ultrasonography:", total_Ultrasound, "\n",
+    "Others:", total_Others, "\n")
+
+# Create a structured data frame table for category/component of diagnostic_technique variable
+diagnostic_summary <- data.frame(
+  Category = c("MRI", "CT scan", "PET", "PET-CT Scans", "X-Ray", "Ultrasonography", "Others"),
+  Frequency = c(total_MRI, total_CT, total_PET, total_PET_CT, total_XRay, total_Ultrasound, total_Others)
+                            )%>%
+mutate(Percentage = round((Frequency / sum(Frequency)) * 100, 1))  # Round to 1 decimal place
+
+# Print the final structured table
+print(diagnostic_summary)
+
+# Plotting a bar chart 
+ggplot(diagnostic_summary, aes(x = Category, y = Frequency, fill = Category)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(Frequency, " (", Percentage, "%)")), vjust = -0.5) +
+  labs(title = "Categorized Frequency of Diagnostic Techniques", x = "Diagnostic Category", y = "Frequency") +
+  theme_minimal()
 ```
 
+
+```{r}
+# Calculate percentages
+diagnostic_summary <- diagnostic_summary %>%
+  mutate(Percentage = round((Frequency / sum(Frequency)) * 100, 1))  # Round to 1 decimal place
+
+# Create pie chart with frequency and percentage
+ggplot(diagnostic_summary, aes(x = "", y = Frequency, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  geom_text(aes(label = paste0(Frequency, " (", Percentage, "%)")), position = position_stack(vjust = 0.5)) +
+  labs(title = "Distribution of Diagnostic Techniques in the form of Frequency & Percentage") +
+  theme_void() +
+  theme(legend.position = "right")
+```
 
 
 ```{r echo=FALSE}
@@ -227,7 +258,6 @@ ggplot(ml_type_counts, aes(x = reorder(ML_Type, n), y = n)) +
   theme_minimal()
 ```
 
-
 ```{r echo=FALSE}
 summary_table <- data %>%
   filter(
@@ -299,7 +329,6 @@ ggplot(dt_year_summary, aes(x = publication_year, y = n, color = diagnostic_tech
     ) +
     scale_x_continuous(breaks = sort(unique(dt_year_summary$publication_year)))
 ```
-
 
 ```{r echo=FALSE}
 # Clean and standardize the field_of_application values
@@ -376,4 +405,3 @@ ggplot(plot_df, aes(x = reorder(Cancer_type, n), y = n, fill = Cancer_type)) +
   ) +
   ylim(0, max(plot_df$n) * 1.20)
 ```
-
