@@ -135,6 +135,30 @@ ggplot(category_summary, aes(x = "", y = n, fill = diagnostic_technique)) +
 ```
 
 
+```{r echo=FALSE}
+ggplot(category_summary, aes(x = reorder(diagnostic_technique, -n), y = n, fill = diagnostic_technique)) +
+    geom_col() +
+    geom_text(
+        aes(label = label),
+        vjust = -0.5,
+        size = 5
+    ) +
+    scale_fill_brewer(palette = "Set1") +
+    labs(
+        title = "Distribution of Diagnostic Techniques",
+        x = "Diagnostic Technique Type",
+        y = "Counts of Diagnostic Technique(Percentages)",
+        fill = "Diagnostic Technique"
+    ) +
+    theme_minimal() +
+    theme(
+        plot.title = element_text(size = 12, face = "bold", hjust = 0.8),
+        axis.text.x = element_blank(),  # Still removes the x-axis values as you requested before
+        legend.title = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 10)
+    )
+```
+
 
 ```{r echo=FALSE}
 # Clean and standardize the type_of_ml_used_subgroup_1 and type_of_ml_used_subgroup_2 columns
@@ -226,6 +250,102 @@ ggplot(ml_type_counts, aes(x = reorder(ML_Type, n), y = n)) +
   ylim(0, max(ml_type_counts$n) * 1.15) +
   theme_minimal()
 ```
+
+
+```{r echo=FALSE}
+# Clean and standardize, keeping CNN separate
+data <- data %>%
+  mutate(across(
+    c(type_of_ml_used_subgroup_1, type_of_ml_used_subgroup_2),
+    ~ .x %>%
+      str_trim() %>%
+      str_replace_all("_|-", " ") %>%
+      str_squish() %>%
+      recode(
+        # Core categories
+        "ML" = "ML",
+        "DL" = "DL",
+        "ML, DL" = "ML & DL",
+        "ML/DL" = "ML & DL",
+        "DL AND TML" = "ML & DL",
+
+        # Deep learning variants (keep CNN separate!)
+        "CNN" = "CNN",
+        "CNN, LASSO" = "CNN",
+        "AI, DL" = "DL",
+        "2D DL Models" = "DL",
+        "3D DL Models" = "DL",
+        "DNN" = "DL",
+        "Deep learning neural networks" = "DL",
+
+        # ML variants
+        "Random forest, SVM" = "ML",
+        "Machine learning classifiers" = "ML",
+        "Decision Trees" = "ML",
+
+        # CAD
+        "CAD, CADx, CADt" = "CAD",
+
+        # Radiologist
+        "Radiologists" = "Radiologist",
+        "Radiologist" = "Radiologist",
+
+        # Non-AI (all variants)
+        "Non-AI" = "Non-AI",
+        "Non AI" = "Non-AI",
+        "non AI" = "Non-AI",
+        "non-AI" = "Non-AI",
+        "NON AI" = "Non-AI",
+        "Non deep learning" = "Non-AI",
+
+        .default = .x
+      )
+  ))
+
+# Combine the two columns
+ml_type_combined <- data %>%
+  select(type_of_ml_used_subgroup_1, type_of_ml_used_subgroup_2) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Subgroup", values_to = "ML_Type"
+  ) %>%
+  filter(!is.na(ML_Type) & ML_Type != "")
+
+# Final normalization for edge cases
+ml_type_combined <- ml_type_combined %>%
+  mutate(
+    ML_Type = case_when(
+      ML_Type %in% c("Non-AI", "Non AI", "non AI", "non-AI", "NON AI") ~ "Non-AI",
+      TRUE ~ ML_Type
+    )
+  )
+
+# Count frequencies and percentages
+ml_type_counts <- ml_type_combined %>%
+  count(ML_Type, sort = TRUE) %>%
+  filter(!is.na(ML_Type) & ML_Type != "") %>%
+  mutate(
+    Percentage = n / sum(n),
+    Percentage_Label = paste0(n, " (", percent(Percentage, accuracy = 0.1), ")")
+  )
+
+# Plot with legend for future expandability
+ggplot(ml_type_counts, aes(x = reorder(ML_Type, n), y = n, fill = ML_Type)) +
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Set1") +
+  coord_flip() +
+  geom_text(aes(label = Percentage_Label), hjust = -0.1, size = 4.5) +
+  labs(
+    title = "Frequency Distribution of AI Techniques Used in Studies",
+    x = "Type of AI Used",
+    y = "Frequency Distribution of AI Techniques",
+    fill = "Technique"
+  ) +
+  ylim(0, max(ml_type_counts$n) * 1.15) +
+  theme_minimal() +
+  theme(legend.position = "right")
+```
+
 
 
 ```{r echo=FALSE}
