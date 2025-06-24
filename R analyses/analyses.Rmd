@@ -423,6 +423,7 @@ ggplot(dt_year_summary, aes(x = publication_year, y = n, color = diagnostic_tech
 
 ```{r echo=FALSE}
 # Clean and standardize the field_of_application values
+
 data5 <- data %>%
   mutate(
     Cancer_type = case_when(
@@ -452,7 +453,7 @@ data5 <- data %>%
     )
   )
 
-# Clean up the Cancer_type column
+# Clean Cancer_type column
 data5 <- data5 %>%
   filter(!is.na(Cancer_type) & Cancer_type != "") %>%
   group_by(Cancer_type) %>%
@@ -467,13 +468,17 @@ summary_df <- data5 %>%
   arrange(desc(n)) %>%
   mutate(percent = round(100 * n / sum(n), 2))
 
+# Capitalize the first letter of each cancer type
+summary_df <- summary_df %>%
+  mutate(Cancer_type = str_to_title(Cancer_type))
+
 # Show up to top 10 types (or all if fewer)
 top_n <- min(10, nrow(summary_df))
 plot_df <- summary_df %>%
   arrange(desc(n)) %>%
   head(top_n)
 
-# Function to wrap long labels
+# wrap long labels
 wrap_labels <- function(x, width = 20) {
   sapply(x, function(y) paste(strwrap(y, width = width), collapse = "\n"))
 }
@@ -481,7 +486,7 @@ wrap_labels <- function(x, width = 20) {
 ggplot(plot_df, aes(x = reorder(Cancer_type, n), y = n, fill = Cancer_type)) +
   geom_col(show.legend = FALSE, width = 0.4) +
   geom_text(aes(label = paste0(n, " (", percent, "%)")), 
-            hjust = -0.1, size = 3) +
+            hjust = -0.1, size = 4) +
   coord_flip() +
   scale_x_discrete(labels = wrap_labels) +
   labs(
